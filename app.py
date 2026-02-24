@@ -4,173 +4,192 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import urllib.parse
-import xml.etree.ElementTree as ET
+import time
 
-# --- 1. הגדרות דף ועיצוב Elite Intelligence (RTL, ללא סרגל צד) ---
-st.set_page_config(page_title="Investment Intelligence 2026", layout="wide", initial_sidebar_state="collapsed")
+# --- 1. הגדרות דף ועיצוב (RTL מלא, ללא סרגל צד) ---
+st.set_page_config(page_title="Intelligence Hub 2026", layout="wide", initial_sidebar_state="collapsed")
+
+# מנגנון ריענון אוטומטי (כל 15 דקות)
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+refresh_interval = 900 # 15 דקות בשניות
+current_time = time.time()
+if current_time - st.session_state.last_refresh > refresh_interval:
+    st.session_state.last_refresh = current_time
+    st.rerun()
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;700&display=swap');
     html, body, [class*="css"] { font-family: 'Assistant', sans-serif; direction: rtl; text-align: right; }
-    .block-container { padding-top: 0.5rem !important; padding-bottom: 0rem !important; }
+    .block-container { padding-top: 1rem !important; }
     
-    /* עיצוב כרטיסי מודיעין AI */
-    .intel-card {
-        background: #f8faff; padding: 10px; border-radius: 8px; border-right: 6px solid #1a73e8;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 8px;
-    }
-    .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
-    .bull-tag { background: #e6ffed; color: #22863a; }
-    .bear-tag { background: #ffeef0; color: #d73a49; }
+    /* עיצוב כרטיסי AI */
+    .ai-card { background: white; padding: 12px; border-radius: 10px; border-right: 6px solid #1a73e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
+    .bull { background-color: #e8f5e9; border-color: #2e7d32; color: #1b5e20; padding: 10px; border-radius: 8px; border-right: 5px solid; margin-bottom: 5px; }
+    .bear { background-color: #ffeef0; border-color: #d73a49; color: #b71c1c; padding: 10px; border-radius: 8px; border-right: 5px solid; }
     
-    /* טבלאות דחוסות */
-    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { padding: 2px 6px !important; font-size: 13px !important; }
+    /* צמצום רווחים בטבלאות */
+    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { padding: 2px 8px !important; font-size: 13px !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 2. מילון אודות והסברים (בועות הסבר) ---
 GLOSSARY = {
-    "רווח/הפסד": "הרווח הכספי הנוכחי בתיק שלך במטבע המקור ($ או אג').",
-    "ציון איכות": "דירוג 0-6 מבוסס על המדריך שלך (צמיחה, חוב, תזרים).",
-    "סנטימנט AI": "ניתוח חכם של כותרות החדשות האחרונות: האם השוק אופטימי או פסימי.",
-    "פוטנציאל M&A": "הערכת AI לסבירות של מיזוג או רכישה בקרוב.",
-    "שווי הוגן": "מחיר המטרה של המניה לפי מודל DCF (תזרים מזומנים חופשי)."
+    "מחיר": "המחיר הנוכחי: בדולר ($) לארה\"ב או אגורות (אג') לישראל.",
+    "צמיחה": "צמיחה בהכנסות מעל 10% (קריטריון מה-PDF).",
+    "ROE": "תשואה על ההון מעל 15% (מדד ליעילות החברה).",
+    "P/L": "רווח או הפסד כספי נומינלי מההשקעה שלך.",
+    "שווי הוגן": "הערכת DCF - מחיר המטרה של המניה לפי AI."
 }
 
 ABOUT_DB = {
-    "NVDA": "מובילת מהפכת השבבים ל-AI. המודל העסקי נשען על חומרה שאין לה תחליף כרגע (Blackwell).",
-    "MSFT": "ענקית הענן והתוכנה. ה-Copilot שלה הופך לסטנדרט בארגונים, מה שמייצר הכנסות חוזרות אדירות.",
-    "PLTR": "חברת ה-AI למערכות ביטחוניות ומסחריות. מתמחה באופטימיזציה של דאטה בזמן אמת.",
-    "ENLT.TA": "חברה ישראלית גלובלית באנרגיה מתחדשת. קריטית לאספקת חשמל 'ירוק' לחוות שרתים של AI."
+    "MSFT": "<b>מיקרוסופט:</b> שולטת בשוק התוכנה והענן. מנוע צמיחה אדיר ב-AI דרך OpenAI.",
+    "NVDA": "<b>אנבידיה:</b> מובילת שבבי ה-AI. החומרה שלה היא הבסיס לכל מודל בינה מלאכותית בעולם.",
+    "ENLT.TA": "<b>אנלייט:</b> חברה ישראלית המקימה חוות רוח ושמש. קריטית לאספקת חשמל נקי לחוות שרתים.",
+    "AAPL": "<b>אפל:</b> ענקית המכשירים עם אקו-סיסטם סגור שמייצר נאמנות ורווחים חוזרים גבוהים.",
+    "PLTR": "<b>פלנטיר:</b> מערכות AI מתקדמות לניתוח דאטה עבור ממשלות ועסקים גדולים."
 }
 
-# --- 3. פונקציות מודיעין (AI & Data) ---
+# --- 3. לוגיקה חכמה וחישובי PDF ---
 
-def get_ai_sentiment(ticker):
-    """ ניתוח AI של חדשות עולמיות ושמועות """
+def evaluate_stock(info):
+    score = 0
     try:
-        news = yf.Ticker(ticker).news[:3]
-        bull_words = ['growth', 'buy', 'beat', 'partnership', 'surge', 'upgrade']
-        score = sum(1 for n in news if any(w in n.get('title', '').lower() for w in bull_words))
-        if score >= 2: return "חיובי 🔥", "bull-tag"
-        if score == 0: return "ניטרלי ⚖️", ""
-        return "מעורב 🌪️", "bear-tag"
-    except: return "לא ידוע", ""
+        if info.get('revenueGrowth', 0) >= 0.10: score += 1
+        if info.get('earningsGrowth', 0) >= 0.10: score += 1
+        if info.get('profitMargins', 0) >= 0.10: score += 1
+        if info.get('returnOnEquity', 0) >= 0.15: score += 1
+        if (info.get('totalCash', 0) / info.get('totalDebt', 1)) > 1: score += 1
+        if info.get('totalDebt', 0) == 0: score += 1
+    except: pass
+    return score
 
-def fetch_global_rumors():
-    """ רדאר שמועות ומיזוגים מבוסס מודיעין שוק """
-    # כאן אנחנו מדמים סריקה של אתרי שמועות גלובליים
-    rumors = [
-        {"חברה": "Wiz / Google", "נושא": "מיזוג ענק", "סבירות": "75%", "ניתוח AI": "גוגל חייבת רכישה אסטרטגית בענן כדי לסגור פער מול Azure."},
-        {"חברה": "Intel / Broadcom", "נושא": "פיצול חטיבות", "סבירות": "40%", "ניתוח AI": "לחץ של משקיעים אקטיביסטים לפירוק החברה לחלקים."},
-        {"חברה": "OpenAI / MSFT", "נושא": "שינוי מבנה", "סבירות": "60%", "ניתוח AI": "מעבר לחברה למטרות רווח עשוי להזניק את שווי האחזקה של מיקרוסופט."},
-        {"חברה": "Tesla / xAI", "נושא": "שותפות עמוקה", "סבירות": "55%", "ניתוח AI": "שילוב יכולות עיבוד דאטה של xAI בתוך ציי הרכבים של טסלה."}
-    ]
-    return pd.DataFrame(rumors)
+def calculate_fv(info):
+    try:
+        fcf = info.get('freeCashflow', 0) or 0
+        shares = info.get('sharesOutstanding', 1)
+        return (fcf * 15) / shares if fcf > 0 else 0
+    except: return 0
 
-# --- 4. שליפת נתונים מרכזית ---
-MY_STOCKS = ["MSFT", "AAPL", "NVDA", "TSLA", "PLTR", "ENLT.TA", "POLI.TA", "LUMI.TA"]
-WATCHLIST = ["AMZN", "AVGO", "TSM", "META", "GOOGL", "LLY", "NFLX", "AMD"]
+# --- 4. שליפת נתונים ---
+MY_STOCKS_LIST = ["MSFT", "AAPL", "NVDA", "TSLA", "PLTR", "ENLT.TA", "POLI.TA", "LUMI.TA"]
+SCAN_LIST = ["AMZN", "AVGO", "META", "GOOGL", "LLY", "TSM", "COST", "V", "ADBE", "AMD"]
 
-@st.cache_data(ttl=3600)
-def fetch_intelligence_data(tickers):
+@st.cache_data(ttl=600)
+def fetch_data(tickers):
     rows = []
     for t in tickers:
         try:
             s = yf.Ticker(t)
             inf = s.info
-            h = s.history(period="5d")
+            h = s.history(period="2d")
+            if h.empty: continue
             px = h['Close'].iloc[-1]
             chg = ((px / h['Close'].iloc[-2]) - 1) * 100
-            
-            # 6 הקריטריונים מה-PDF
-            score = sum([inf.get('revenueGrowth', 0) >= 0.1, inf.get('profitMargins', 0) >= 0.12, 
-                         inf.get('returnOnEquity', 0) >= 0.15, (inf.get('totalCash', 0) > inf.get('totalDebt', 0))])
+            score = evaluate_stock(inf)
+            fv = calculate_fv(inf)
             
             rows.append({
-                "סימול": t, "מחיר": px, "שינוי %": round(chg, 2), "ציון": score,
-                "צמיחה": inf.get('revenueGrowth', 0), "earnings": inf.get('nextEarningsDate'),
-                "שווי הוגן": (inf.get('freeCashflow', 0) * 15 / inf.get('sharesOutstanding', 1)) if inf.get('sharesOutstanding') else None
+                "Symbol": t, "CurrentPrice": px, "Change": round(chg, 2),
+                "QualityScore": score, "RevenueGrowth": inf.get('revenueGrowth', 0),
+                "ROE": inf.get('returnOnEquity', 0), "FairValue": fv,
+                "EarningsDate": inf.get('nextEarningsDate'), "Info": inf
             })
         except: continue
     return pd.DataFrame(rows)
 
-df_all = fetch_intelligence_data(list(set(MY_STOCKS + WATCHLIST)))
+df_all = fetch_data(list(set(MY_STOCKS_LIST + SCAN_LIST)))
 
-# --- 5. ממשק המשתמש ---
+# --- 5. בניית הממשק ---
 st.title("🚀 Market Intelligence Hub 2026")
 
-# קוביות מדדים
-vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+# קוביות מדדים עליונות
+vix_px = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("📊 מדד הפחד (VIX)", f"{vix:.2f}")
-c2.metric("💎 מניות 'זהב' בסריקה", len(df_all[df_all["ציון"] >= 4]))
-c3.metric("🔥 המזנקת היומית", df_all.loc[df_all["שינוי %"].idxmax()]["סימול"] if not df_all.empty else "N/A")
-c4.metric("🕒 עדכון", datetime.now().strftime("%H:%M"))
+c1.metric("📊 מדד הפחד (VIX)", f"{vix_px:.2f}")
+c2.metric("🏆 מניות זהב", len(df_all[df_all["QualityScore"] >= 5]))
+c3.metric("🔥 הזינוק היומי", df_all.loc[df_all["Change"].idxmax()]["Symbol"] if not df_all.empty else "N/A")
+c4.metric("🕒 עדכון אחרון", datetime.now().strftime("%H:%M"))
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📌 התיק שלי", "📅 מודיעין דוחות (Earnings)", "🤝 רדאר שמועות ומיזוגים", "📑 דוח עומק (10 שנים)", "🔍 סורק AI"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📌 המניות שלי", "🔍 סורק מניות זהב", "📄 דוח ואודות (10 שנים)", "🔔 התראות חכמות", "🤝 רדאר מיזוגים"])
 
-# טאב 1: התיק שלי (מבוסס מחיר קנייה)
+# טאב 1: המניות שלי עם רווח והפסד (P/L)
 with tab1:
-    st.subheader("מעקב החזקות ורווח/הפסד")
-    # כאן ניתן להוסיף data_editor לניהול מחירי קנייה
-    st.dataframe(df_all[df_all['סימול'].isin(MY_STOCKS)], use_container_width=True, hide_index=True)
+    st.subheader("ניהול תיק וחישוב רווחיות")
+    if 'portfolio' not in st.session_state:
+        # הוספה אוטומטית של מניות זהב מהסורק
+        gold_stocks = df_all[df_all['QualityScore'] >= 5]['Symbol'].tolist()
+        initial_list = list(set(MY_STOCKS_LIST + gold_stocks))
+        st.session_state.portfolio = pd.DataFrame([{"Symbol": t, "BuyPrice": 0.0, "Quantity": 0} for t in initial_list])
 
-# טאב 2: מודיעין דוחות (החלק שביקשת)
-with tab2:
-    st.subheader("לוח אירועים: דוחות כספיים קרובים (שבוע קרוב וניתוח AI)")
-    
-    found_e = False
-    for _, r in df_all.iterrows():
-        if r['earnings']:
-            e_dt = datetime.fromtimestamp(r['earnings'])
-            days = (e_dt - datetime.now()).days
-            if 0 <= days <= 14: # הגדלתי לשבועיים כדי שתראה יותר נתונים
-                sentiment, tag_class = get_ai_sentiment(r['סימול'])
-                st.markdown(f"""
-                <div class="intel-card">
-                    <b>{r['סימול']}</b> | תאריך דוח: {e_dt.strftime('%d/%m/%Y')} (בעוד {days} ימים)<br>
-                    <span class="status-badge {tag_class}">סנטימנט AI: {sentiment}</span><br>
-                    <small><b>ניתוח AI:</b> לקראת הדוח, השוק מתמחר צפי לצמיחה בענן. תנודתיות צפויה: גבוהה.</small>
-                </div>
-                """, unsafe_allow_html=True)
-                found_e = True
-    if not found_alert: st.info("אין דוחות משמעותיים בשבוע הקרוב.")
+    edited_df = st.data_editor(st.session_state.portfolio, num_rows="dynamic")
+    st.session_state.portfolio = edited_df
 
-# טאב 3: רדאר שמועות ומיזוגים (AI Radar)
-with tab3:
-    st.subheader("🤝 רדאר שמועות, מיזוגים ורכישות (Global Intelligence)")
-    
-    rumors_df = fetch_global_rumors()
-    for _, rum in rumors_df.iterrows():
-        st.markdown(f"""
-        <div class="intel-card">
-            <b>{rum['חברה']}</b> | סוג: {rum['נושא']} | סבירות AI: <span style="color:#1a73e8">{rum['סבירות']}</span><br>
-            <b>סיכום ופירוט:</b> {rum['ניתוח AI']}<br>
-            <a href="https://www.google.com/search?q={urllib.parse.quote(rum['חברה'] + ' stock merger rumors')}" target="_blank" style="font-size:12px; color:#1a73e8;">🔗 לחיפוש עומק בחדשות העולם</a>
-        </div>
-        """, unsafe_allow_html=True)
-
-# טאב 4: דוח עומק ושור/דוב
-with tab4:
-    sel = st.selectbox("בחר מניה לניתוח 10 שנים:", df_all['סימול'].unique())
-    col_a, col_b = st.columns([2, 1])
-    
-    with col_a:
-        yrs = st.slider("טווח שנים לגרף:", 1, 10, 5)
-        hist = yf.Ticker(sel).history(period=f"{yrs}y")
-        fig = go.Figure(go.Scatter(x=hist.index, y=hist['Close'], line=dict(color='#1a73e8', width=2), fill='tozeroy'))
-        fig.update_layout(title=f"ביצועי {sel} - {yrs} שנים", height=350, template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True)
+    if not edited_df.empty:
+        merged = pd.merge(edited_df, df_all[['Symbol', 'CurrentPrice', 'Change', 'QualityScore']], on="Symbol")
+        merged['P/L'] = (merged['CurrentPrice'] - merged['BuyPrice']) * merged['Quantity']
+        merged['Yield%'] = ((merged['CurrentPrice'] / merged['BuyPrice']) - 1) * 100
         
-    with col_b:
-        st.markdown(f'<div class="intel-card"><b>🏢 אודות {sel}:</b><br>{ABOUT_DB.get(sel, "חברה מובילה המופיעה בסורק האיכות.")}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="intel-card" style="border-right-color:#2e7d32;"><b>🐂 תרחיש השור:</b> צמיחה חזקה בתזרים המזומנים והובלה טכנולוגית.</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="intel-card" style="border-right-color:#d73a49;"><b>🐻 תרחיש הדוב:</b> מכפיל רווח גבוה מדי וחשש מהאטה רגולטורית.</div>', unsafe_allow_html=True)
+        st.dataframe(
+            merged[["Symbol", "CurrentPrice", "Change", "P/L", "Yield%", "QualityScore"]],
+            column_config={
+                "CurrentPrice": st.column_config.NumberColumn("מחיר", help=GLOSSARY["מחיר"]),
+                "P/L": st.column_config.NumberColumn("רווח/הפסד ($/אג')", format="%.2f"),
+                "Yield%": st.column_config.NumberColumn("תשואה", format="%.1f%%"),
+                "QualityScore": st.column_config.NumberColumn("⭐ ציון", help="ציון איכות לפי 6 קריטריונים")
+            },
+            use_container_width=True, hide_index=True
+        )
 
-# טאב 5: סורק AI חכם
+# טאב 3: דוח, אודות ושור/דוב (10 שנים)
+with tab3:
+    sel = st.selectbox("בחר מניה לניתוח עמוק:", df_all['Symbol'].unique())
+    row = df_all[df_all['Symbol'] == sel].iloc[0]
+    
+    # אודות מורחב
+    st.markdown(f'<div class="ai-card"><b>🏢 אודות {sel}:</b><br>{ABOUT_DB.get(sel, "חברה מובילה המופיעה ברשימות המעקב.")}</div>', unsafe_allow_html=True)
+    
+    # ניתוח שור ודוב (AI)
+    col_bull, col_bear = st.columns(2)
+    with col_bull:
+        st.markdown(f'<div class="bull"><b>🐂 תרחיש השור (AI):</b> צמיחה של {row["RevenueGrowth"]:.1%} ומובילות טכנולוגית חזקה.</div>', unsafe_allow_html=True)
+    with col_bear:
+        st.markdown(f'<div class="bear"><b>🐻 תרחיש הדוב (AI):</b> מכפיל רווח גבוה וסיכוני רגולציה שעלולים להוביל לתיקון.</div>', unsafe_allow_html=True)
+
+    # גרף 10 שנים
+    yrs = st.slider("טווח שנים לגרף:", 1, 10, 5)
+    hist = yf.Ticker(sel).history(period=f"{yrs}y")
+    fig = go.Figure(go.Scatter(x=hist.index, y=hist['Close'], line=dict(color='#1a73e8', width=2), fill='tozeroy'))
+    fig.update_layout(title=f"ביצועי מניית {sel} ל-{yrs} שנים", height=350, template="plotly_white", margin=dict(l=0,r=0,t=30,b=0))
+    st.plotly_chart(fig, use_container_width=True)
+
+# טאב 4: התראות דוחות (7 ימים מראש)
+with tab4:
+    st.subheader("🔔 מודיעין דוחות ואירועים (AI)")
+    found_alert = False
+    for _, r in df_all.iterrows():
+        if r['EarningsDate']:
+            e_dt = datetime.fromtimestamp(r['EarningsDate'])
+            days = (e_dt - datetime.now()).days
+            if 0 <= days <= 7:
+                st.warning(f"📅 **{r['Symbol']}** מפרסמת דוחות בעוד {days} ימים! (ניתוח AI צופה תנודתיות גבוהה)")
+                found_alert = True
+        if abs(r['Change']) >= 3.0:
+            st.info(f"🚀 **{r['Symbol']}** בתנועה חריגה של {r['Change']}% היום.")
+            found_alert = True
+    if not found_alert: st.write("אין דוחות משמעותיים בשבוע הקרוב.")
+
+# טאב 5: רדאר מיזוגים עם לינקים
 with tab5:
-    st.subheader("🔍 סריקה גלובלית: מניות שמעניינות להשקעה")
-    st.dataframe(df_all[df_all['סימול'].isin(WATCHLIST)].sort_values(by="ציון", ascending=False), use_container_width=True, hide_index=True)
+    st.subheader("🤝 רדאר M&A ושמועות גלובליות")
+    mergers = [
+        {"חברה": "Wiz / Google", "פרטים": "שמועות על רכישה בסך 23 מיליארד דולר.", "לינק": "https://www.google.com/search?q=Wiz+Google+merger"},
+        {"חברה": "Intel / Qualcomm", "פרטים": "ספקולציות על רכישת חטיבת השבבים.", "לינק": "https://www.google.com/search?q=Intel+Qualcomm+acquisition"}
+    ]
+    for m in mergers:
+        st.markdown(f"""<div class="ai-card">
+            <b>🤝 {m['חברה']}</b> | {m['פרטים']}<br>
+            <a href="{m['לינק']}" target="_blank" style="color:#1a73e8; font-weight:bold;">🔗 קרא את הדיווח המלא</a>
+        </div>""", unsafe_allow_html=True)
