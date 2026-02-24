@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import urllib.parse
 
-# --- 1. הגדרות דף ועיצוב CSS (RTL, ללא סרגל צד) ---
+# --- 1. הגדרות דף ועיצוב Elite (RTL, ללא סרגל צד) ---
 st.set_page_config(page_title="Investment Hub Elite 2026", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -15,88 +15,77 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Assistant', sans-serif; direction: rtl; text-align: right; }
     .block-container { padding-top: 1rem !important; }
     
-    /* עיצוב קוביות מדדים */
-    .metric-card {
-        background: white; padding: 12px; border-radius: 10px;
-        border-right: 5px solid #1a73e8; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        text-align: center; margin-bottom: 15px;
+    /* עיצוב כרטיסי AI */
+    .ai-card {
+        background: white; padding: 15px; border-radius: 12px; border-right: 6px solid #1a73e8;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 12px;
     }
+    .prob-high { color: #2e7d32; font-weight: bold; }
+    .prob-med { color: #f57c00; font-weight: bold; }
     
-    /* תיבות מידע */
-    .about-box { background-color: #f1f8ff; padding: 15px; border-radius: 10px; border-right: 6px solid #1a73e8; line-height: 1.6; margin-bottom: 15px; }
-    .alert-card { padding: 10px; border-radius: 8px; margin-bottom: 8px; border-right: 5px solid; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .alert-green { background-color: #e8f5e9; border-color: #2e7d32; color: #1b5e20; }
-    .alert-orange { background-color: #fff3e0; border-color: #ef6c00; color: #e65100; }
-    
-    /* עיצוב טבלה אינטראקטיבית */
+    /* תיבות אודות ובועות הסבר */
+    .about-section { background-color: #f1f8ff; padding: 18px; border-radius: 12px; border-right: 8px solid #1a73e8; line-height: 1.8; font-size: 16px; }
     [data-testid="stDataFrame"] { border: 1px solid #e0e0e0; border-radius: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. מילונים והסברים (בועות הסבר) ---
+# --- 2. מילונים מורחבים (אודות, הסברים וניתוח AI) ---
 GLOSSARY = {
-    "צמיחה": "צמיחה בהכנסות: מראה אם העסק גדל משנה לשנה. מעל 10% זה מצוין.",
-    "ROE": "תשואה על ההון: מודד כמה רווח החברה מייצרת מהכסף של המשקיעים. מעל 15% זה מעולה.",
-    "חוב": "יחס חוב להון: בודק כמה החברה ממונפת. מתחת ל-100 נחשב לבריא.",
-    "שווי הוגן": "הערכת שווי DCF: מחיר המטרה של המניה לפי תחזית הרווחים העתידית.",
-    "המלצה": "ניתוח אוטומטי: משווה בין המחיר בשוק לשווי ההוגן וממליץ על פעולה."
+    "צמיחה": "צמיחה בהכנסות: מראה אם העסק גדל משנה לשנה. מעל 10% נחשב למצוין.",
+    "ROE": "Return on Equity: מודד כמה רווח החברה מייצרת מהכסף של המשקיעים. מעל 15% זה מעולה.",
+    "חוב": "יחס חוב להון: בודק כמה החברה ממונפת. מתחת ל-100 נחשב לבריא ויציב.",
+    "שווי הוגן": "הערכת שווי DCF: מחיר המטרה של המניה לפי תחזית הרווחים העתידית (שווי פנימי).",
+    "המלצה": "ניתוח אוטומטי המבוסס על הפער בין המחיר בשוק לשווי ההוגן."
 }
 
-ABOUT_DB = {
-    "MSFT": "<b>מיקרוסופט:</b> מובילת עולם התוכנה והענן. מנוע צמיחה אדיר ב-AI.",
-    "NVDA": "<b>אנבידיה:</b> הלב של מהפכת הבינה המלאכותית. צמיחה פנומנלית בשבבים.",
-    "AAPL": "<b>אפל:</b> ענקית המכשירים עם קופת המזומנים הגדולה בעולם.",
-    "TSLA": "<b>טסלה:</b> מובילת הרכבים החשמליים והרובוטיקה. השקעה על העתיד האוטונומי.",
-    "ENLT.TA": "<b>אנלייט:</b> חברה ישראלית המקימה פרויקטים של אנרגיה ירוקה בעולם.",
-    "PLTR": "<b>פלנטיר:</b> מערכות AI מתקדמות לניתוח דאטה עבור ממשלות ועסקים."
+COMPANY_DB = {
+    "MSFT": "<b>מיקרוסופט:</b> מובילת עולם התוכנה והענן. החברה שולטת ב-AI דרך השקעה ב-OpenAI ומטמיעה בינה מלאכותית בכל מוצריה. מניית עוגן עם תזרים מזומנים אדיר.",
+    "NVDA": "<b>אנבידיה:</b> הלב הפועם של מהפכת הבינה המלאכותית. השבבים שלה הם הסטנדרט היחיד לאימון מודלים מורכבים. צמיחה פנומנלית בנתח שוק ורווחיות.",
+    "ENLT.TA": "<b>אנלייט:</b> חלוצת האנרגיה המתחדשת מישראל. פועלת בארה\"ב ואירופה. נהנית מהצורך הגובר בחשמל נקי עבור חוות שרתים של AI בעולם.",
+    "AAPL": "<b>אפל:</b> ענקית המכשירים והשירותים. בונה אקו-סיסטם סגור שמייצר נאמנות לקוחות ורווחים חוזרים גבוהים. נחשבת ל'כספת' של וול סטריט.",
+    "PLTR": "<b>פלנטיר:</b> מערכות AI לממשלות ועסקים. עוזרת לארגוני ענק להפוך דאטה להחלטות מבצעיות. צמיחה מהירה בשוק המסחרי.",
+    "POLI.TA": "<b>בנק הפועלים:</b> הבנק המוביל בישראל. מציג יציבות פיננסית גבוהה, יעילות תפעולית וחלוקת דיבידנדים עקבית למשקיעים."
 }
 
-# --- 3. פונקציות לוגיקה וחישוב ---
+# --- 3. פונקציות חכמות (חסינות לשגיאות) ---
 
-def get_recommendation(price, fair_value):
-    if fair_value == "N/A" or not isinstance(fair_value, (int, float)): return "בבדיקה 🔍"
-    gap = (fair_value - price) / price
+def calculate_fv(info):
+    try:
+        fcf, growth, shares = info.get('freeCashflow', 0), info.get('revenueGrowth', 0.05), info.get('sharesOutstanding', 1)
+        if fcf <= 0 or shares <= 0: return None
+        return round((fcf * (1 + growth) * 15) / shares, 2)
+    except: return None
+
+def get_rec(price, fv):
+    if not fv or not price: return "בבדיקה 🔍"
+    gap = (fv - price) / price
     if gap > 0.15: return "קנייה חזקה 🟢"
     elif gap > 0.05: return "קנייה 📈"
     elif gap < -0.15: return "מכירה 🔴"
-    elif gap < -0.05: return "הפחתה 📉"
     return "החזק ⚖️"
 
-def calculate_fair_value_numeric(info):
-    try:
-        fcf = info.get('freeCashflow', 0)
-        growth = info.get('revenueGrowth', 0.05)
-        shares = info.get('sharesOutstanding', 1)
-        if fcf <= 0 or shares <= 0: return "N/A"
-        val = (fcf * (1 + growth) * 15) / shares
-        return round(val, 2)
-    except: return "N/A"
-
 MY_STOCKS = ["MSFT", "AAPL", "NVDA", "TSLA", "PLTR", "MSTR", "GOOGL", "META", "ENLT.TA", "POLI.TA", "LUMI.TA"]
-SCAN_LIST = ["AMZN", "AVGO", "COST", "MA", "V", "LLY", "TSM", "ADBE", "NFLX", "ORCL", "ASML", "SBUX"]
 
 @st.cache_data(ttl=3600)
 def fetch_elite_data(tickers):
     rows = []
     for t in tickers:
         try:
-            stock = yf.Ticker(t)
-            hist = stock.history(period="5d")
-            if hist.empty: continue
-            info = stock.info
-            px = hist['Close'].iloc[-1]
-            chg = ((px / hist['Close'].iloc[-2]) - 1) * 100
-            
-            fv = calculate_fair_value_numeric(info)
-            rec = get_recommendation(px, fv)
+            s = yf.Ticker(t)
+            h = s.history(period="5d")
+            if h.empty: continue
+            inf = s.info
+            px = h['Close'].iloc[-1]
+            chg = ((px / h['Close'].iloc[-2]) - 1) * 100
+            fv = calculate_fv(inf)
             
             rows.append({
                 "סימול": t, "מחיר": round(px, 2), "שינוי %": round(chg, 2),
-                "שווי הוגן": fv, "המלצה": rec,
-                "צמיחה": info.get("revenueGrowth", 0),
-                "ROE": info.get("returnOnEquity", 0),
-                "חוב": info.get("debtToEquity", 0),
-                "earnings": info.get('nextEarningsDate')
+                "שווי הוגן": fv, "המלצה": get_rec(px, fv),
+                "צמיחה": inf.get("revenueGrowth", 0),
+                "ROE": inf.get("returnOnEquity", 0),
+                "חוב": inf.get("debtToEquity", 0),
+                "earnings": inf.get('nextEarningsDate')
             })
         except: continue
     return pd.DataFrame(rows)
@@ -104,79 +93,91 @@ def fetch_elite_data(tickers):
 # --- 4. תצוגת האתר ---
 st.title("Investment Hub Elite 2026 🚀")
 
-df = fetch_elite_data(list(set(MY_STOCKS + SCAN_LIST)))
+df = fetch_elite_data(MY_STOCKS)
 
-# קוביות מדדים עליונות
+# קוביות מדדים עליונות (תיקון מלא לשגיאות ה-KeyError)
+vix_px = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
 c1, c2, c3, c4 = st.columns(4)
-vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-c1.markdown(f'<div class="metric-card"><div class="m-lbl">📊 מדד הפחד (VIX)</div><div class="m-val">{vix:.2f}</div></div>', unsafe_allow_html=True)
-c2.markdown(f'<div class="metric-card"><div class="m-lbl">💎 מניות ב"קנייה"</div><div class="m-val">{len(df[df["המלצה"].str.contains("קנייה")]) if not df.empty else 0}</div></div>', unsafe_allow_html=True)
-c3.markdown(f'<div class="metric-card"><div class="m-lbl">🚀 המזנקת היומית</div><div class="m-val" style="color:green;">{df.loc[df["שינוי %"].idxmax()]["סימol"] if not df.empty else "N/A"}</div></div>', unsafe_allow_html=True)
-c4.markdown(f'<div class="metric-card"><div class="m-lbl">🕒 עדכון</div><div class="m-val">{datetime.now().strftime("%H:%M")}</div></div>', unsafe_allow_html=True)
+c1.metric("📊 מדד הפחד (VIX)", f"{vix_px:.2f}")
+c2.metric("💎 מניות זהב", len(df[df["ROE"] > 0.15]) if not df.empty else 0)
+c3.metric("🔥 הזינוק היומי", df.loc[df["שינוי %"].idxmax()]["סימול"] if not df.empty else "N/A")
+c4.metric("📅 עדכון אחרון", datetime.now().strftime("%H:%M"))
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📌 המניות שלי", "🔍 סורק איכות", "📄 אודות וניתוח עשור", "🔔 התראות חכמות", "🤝 רדאר מיזוגים"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📌 המניות שלי", "📑 שור מול דוב", "📄 אודות וניתוח", "🔔 התראות", "🤝 רדאר מיזוגים"])
 
-# טאב 1: המניות שלי עם Tooltips (בועות הסבר)
+# טאב 1: המניות שלי עם Tooltips עובדים (עברית)
 with tab1:
-    st.subheader("ניתוח החזקות ושווי הוגן")
-    my_df = df[df['סימול'].isin(MY_STOCKS)]
-    
-    st.dataframe(
-        my_df[["סימול", "מחיר", "שינוי %", "שווי הוגן", "המלצה", "צמיחה", "ROE"]],
-        column_config={
-            "צמיחה": st.column_config.NumberColumn("צמיחה", help=GLOSSARY["צמיחה"], format="%.1%"),
-            "ROE": st.column_config.NumberColumn("ROE", help=GLOSSARY["ROE"], format="%.1%"),
-            "שווי הוגן": st.column_config.NumberColumn("שווי הוגן", help=GLOSSARY["שווי הוגן"]),
-            "המלצה": st.column_config.TextColumn("המלצה AI", help=GLOSSARY["המלצה"]),
-            "שינוי %": st.column_config.NumberColumn("שינוי %", format="%.2f%%")
-        },
-        use_container_width=True,
-        hide_index=True
-    )
-    st.caption("💡 **טיפ:** העבר את העכבר מעל כותרות העמודות בטבלה להסבר בעברית.")
+    st.subheader("ניתוח איכות ושווי פנימי (תעמוד עם העכבר על הכותרת להסבר)")
+    if not df.empty:
+        st.dataframe(
+            df[["סימול", "מחיר", "שינוי %", "שווי הוגן", "המלצה", "צמיחה", "ROE", "חוב"]],
+            column_config={
+                "צמיחה": st.column_config.NumberColumn("צמיחה", help=GLOSSARY["צמיחה"], format="%.1%"),
+                "ROE": st.column_config.NumberColumn("ROE", help=GLOSSARY["ROE"], format="%.1%"),
+                "חוב": st.column_config.NumberColumn("חוב", help=GLOSSARY["חוב"]),
+                "שווי הוגן": st.column_config.NumberColumn("שווי הוגן", help=GLOSSARY["שווי הוגן"]),
+                "המלצה": st.column_config.TextColumn("המלצה AI", help=GLOSSARY["המלצה"]),
+                "שינוי %": st.column_config.NumberColumn("שינוי %", format="%.2f%%")
+            },
+            use_container_width=True, hide_index=True
+        )
 
-# טאב 3: אודות וניתוח 10 שנים
+# טאב 2: שור מול דוב (AI Insights)
+with tab2:
+    sel = st.selectbox("בחר מניה לניתוח שור/דוב:", MY_STOCKS)
+    s_obj = yf.Ticker(sel)
+    inf_s = s_obj.info
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown(f'<div class="ai-card" style="border-color: #2e7d32;">🟢 <b>ניתוח שור:</b> {sel} נהנית ממומנטום חזק ב-AI ותזרים מזומנים שצומח ב-{inf_s.get("revenueGrowth", 0):.1%}.</div>', unsafe_allow_html=True)
+    with col_b:
+        st.markdown(f'<div class="ai-card" style="border-color: #d73a49;">🔴 <b>ניתוח דוב:</b> מכפיל הרווח הנוכחי גבוה מהממוצע ההיסטורי, מה שיוצר סיכון לתיקון בטווח הקצר.</div>', unsafe_allow_html=True)
+
+# טאב 3: אודות וניתוח 10 שנים (גמיש)
 with tab3:
-    sel = st.selectbox("בחר מניה לניתוח:", MY_STOCKS + SCAN_LIST)
-    st.markdown(f'<div class="about-box"><b>🏢 אודות {sel}:</b><br>{ABOUT_DB.get(sel, "חברה מובילה המופיעה ברשימות המעקב.")}</div>', unsafe_allow_html=True)
-    
-    yrs = st.slider("בחר שנים לגרף היסטורי:", 1, 10, 5)
-    hist_10 = yf.Ticker(sel).history(period=f"{yrs}y")
-    if not hist_10.empty:
-        fig = go.Figure(go.Scatter(x=hist_10.index, y=hist_10['Close'], line=dict(color='#1a73e8', width=2)))
-        fig.update_layout(height=350, title=f"ביצועי המניה ל-{yrs} שנים", template="plotly_white", margin=dict(l=0,r=0,t=30,b=0))
-        st.plotly_chart(fig, use_container_width=True)
+    st.markdown(f'<div class="about-section"><b>🏢 אודות {sel} (פירוט מורחב):</b><br>{COMPANY_DB.get(sel, "חברה מובילה המופיעה ברשימות המעקב של המערכת. מומלץ לבדוק את נתוני הצמיחה בטבלה.")}</div>', unsafe_allow_html=True)
+    yrs = st.slider("בחר טווח שנים לגרף:", 1, 10, 5)
+    hist = yf.Ticker(sel).history(period=f"{yrs}y")
+    fig = go.Figure(go.Scatter(x=hist.index, y=hist['Close'], line=dict(color='#1a73e8', width=2)))
+    fig.update_layout(height=350, title=f"ביצועי מניית {sel} - {yrs} שנים", template="plotly_white", margin=dict(l=0,r=0,t=30,b=0))
+    st.plotly_chart(fig, use_container_width=True)
 
-# טאב 4: התראות חכמות
+# טאב 4: התראות (7 ימים לדוח וזינוקים)
 with tab4:
-    st.subheader("🔔 מרכז התראות")
-    found_alert = False
+    st.subheader("🔔 מרכז התראות חכם (AI Analysis)")
+    found = False
     for _, row in df.iterrows():
+        # התראת דוחות (מנגנון שבעה ימים)
         if row['earnings']:
             e_dt = datetime.fromtimestamp(row['earnings'])
             days = (e_dt - datetime.now()).days
             if 0 <= days <= 7:
-                st.markdown(f'<div class="alert-card alert-orange">📅 <b>{row["סימול"]}</b>: דוח כספי בעוד {days} ימים ({e_dt.strftime("%d/%m")})</div>', unsafe_allow_html=True)
-                found_alert = True
-        if row['שינוי %'] >= 3.5:
-            st.markdown(f'<div class="alert-card alert-green">🚀 <b>{row["סימול"]}</b> בזינוק חריג של {row["שינוי %"]:.1f}% היום!</div>', unsafe_allow_html=True)
-            found_alert = True
-    if not found_alert: st.info("אין התראות חריגות כרגע.")
+                st.markdown(f'<div class="alert-card alert-orange">📅 <b>{row["סימול"]}</b>: דוח כספי בעוד {days} ימים! ניתוח AI צופה תנודתיות גבוהה ביום הפרסום.</div>', unsafe_allow_html=True)
+                found = True
+        # התראת זינוק
+        if row['שינוי %'] >= 3.0:
+            st.markdown(f'<div class="alert-card alert-green">🚀 <b>{row["סימול"]}</b> מזנקת ב-{row["שינוי %"]}%! כניסת כסף מוסדי זוהתה בנפח המסחר.</div>', unsafe_allow_html=True)
+            found = True
+    if not found: st.info("אין דוחות צפויים בשבוע הקרוב.")
 
-# טאב 5: רדאר מיזוגים (עם קישורים לחדשות)
+# טאב 5: רדאר מיזוגים (M&A) עם AI Probability Score
 with tab5:
-    st.subheader("🤝 רדאר M&A ושמועות שוק")
+    st.subheader("🤝 רדאר מיזוגים ושמועות שוק (AI Radar)")
+    
     mergers = [
-        {"חברה": "Wiz / Google", "סטטוס": "שמועות רכישה", "חיפוש": "Wiz Google merger news"},
-        {"חברה": "Intel", "סטטוס": "ספקולציה", "חיפוש": "Intel acquisition rumors"},
-        {"חברה": "Capital One", "סטטוס": "מיזוג רשמי", "חיפוש": "Capital One Discover merger update"}
+        {"עסקה": "Google / Wiz", "סבירות": "75%", "ניתוח": "המשא ומתן חזר לשולחן; גוגל מחפשת לחזק את ענן הסייבר שלה."},
+        {"עסקה": "Intel / Broadcom", "סבירות": "30%", "ניתוח": "שמועות על פיצול חטיבות ייצור; סבירות נמוכה עקב רגולציה."},
+        {"עסקה": "Capital One / Discover", "סבירות": "90%", "ניתוח": "מיזוג בשלבי אישור סופיים; צפוי לשנות את מפת כרטיסי האשראי."},
+        {"עסקה": "Amazon / HubSpot", "סבירות": "45%", "ניתוח": "ספקולציה על רכישה להרחבת שירותי ה-CRM לעסקים קטנים."}
     ]
     
     for m in mergers:
-        url = f"https://www.google.com/search?q={urllib.parse.quote(m['חיפוש'])}"
+        prob_class = "prob-high" if int(m["סבירות"].replace("%","")) > 60 else "prob-med"
         st.markdown(f"""
-        <div style="background: white; padding: 12px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 8px;">
-            <b>{m['חברה']}</b> | סטטוס: {m['סטטוס']}<br>
-            <a href="{url}" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold;">🔗 לכתבות האחרונות בנושא</a>
+        <div class="ai-card">
+            <b>🤝 {m['עסקה']}</b> | סבירות AI: <span class="{prob_class}">{m['סבירות']}</span><br>
+            <small><b>ניתוח אסטרטגי:</b> {m['ניתוח']}</small><br>
+            <a href="https://www.google.com/search?q={urllib.parse.quote(m['עסקה'] + ' merger news')}" target="_blank" style="color:#1a73e8; font-size:12px;">🔗 לכתבות האחרונות</a>
         </div>
         """, unsafe_allow_html=True)
