@@ -5,18 +5,17 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import time
+import urllib.parse
 
-# --- 1. הגדרות דף ועיצוב (RTL מלא, ללא סרגל צד) ---
-st.set_page_config(page_title="Intelligence Hub 2026", layout="wide", initial_sidebar_state="collapsed")
+# --- 1. הגדרות דף ועיצוב Elite (RTL מלא, ללא סרגל צד) ---
+st.set_page_config(page_title="Investment Intelligence 2026", layout="wide", initial_sidebar_state="collapsed")
 
 # מנגנון ריענון אוטומטי (כל 15 דקות)
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-refresh_interval = 900 # 15 דקות בשניות
-current_time = time.time()
-if current_time - st.session_state.last_refresh > refresh_interval:
-    st.session_state.last_refresh = current_time
+if time.time() - st.session_state.last_refresh > 900:
+    st.session_state.last_refresh = time.time()
     st.rerun()
 
 st.markdown("""
@@ -25,60 +24,48 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Assistant', sans-serif; direction: rtl; text-align: right; }
     .block-container { padding-top: 1rem !important; }
     
-    /* עיצוב כרטיסי AI */
-    .ai-card { background: white; padding: 12px; border-radius: 10px; border-right: 6px solid #1a73e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
-    .bull { background-color: #e8f5e9; border-color: #2e7d32; color: #1b5e20; padding: 10px; border-radius: 8px; border-right: 5px solid; margin-bottom: 5px; }
-    .bear { background-color: #ffeef0; border-color: #d73a49; color: #b71c1c; padding: 10px; border-radius: 8px; border-right: 5px solid; }
-    
-    /* צמצום רווחים בטבלאות */
-    [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th { padding: 2px 8px !important; font-size: 13px !important; }
+    /* עיצוב כרטיסי AI והתראות */
+    .intel-card { background: white; padding: 12px; border-radius: 10px; border-right: 6px solid #1a73e8; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 10px; }
+    .bull-box { background-color: #e8f5e9; border-color: #2e7d32; color: #1b5e20; padding: 10px; border-radius: 8px; border-right: 5px solid; }
+    .bear-box { background-color: #ffeef0; border-color: #d73a49; color: #b71c1c; padding: 10px; border-radius: 8px; border-right: 5px solid; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. מילון אודות והסברים (בועות הסבר) ---
+# --- 2. מילון בועות הסבר (Tooltips) בעברית ---
 GLOSSARY = {
-    "מחיר": "המחיר הנוכחי: בדולר ($) לארה\"ב או אגורות (אג') לישראל.",
-    "צמיחה": "צמיחה בהכנסות מעל 10% (קריטריון מה-PDF).",
-    "ROE": "תשואה על ההון מעל 15% (מדד ליעילות החברה).",
-    "P/L": "רווח או הפסד כספי נומינלי מההשקעה שלך.",
-    "שווי הוגן": "הערכת DCF - מחיר המטרה של המניה לפי AI."
+    "מחיר": "המחיר הנוכחי במסחר. $ למניות חוץ, אג' למניות ישראל.",
+    "ציון איכות": "שקלול 6 הקריטריונים מהמדריך: צמיחה, רווחיות, חוב ומזומן. 5-6 = מניית זהב.",
+    "רווח/הפסד": "כמה כסף (נומינלי) הרווחת או הפסדת על הנייר.",
+    "תשואה": "השינוי באחוזים ממחיר הקנייה שלך.",
+    "דיבידנד %": "אחוז הרווח השנתי שהחברה מחלקת למשקיעים במזומן.",
+    "תאריך אקס": "היום האחרון שבו צריך להחזיק במניה כדי לקבל את הדיבידנד הקרוב.",
+    "שווי הוגן": "המחיר שהמניה 'באמת' שווה לפי הרווחים שלה. אם המחיר נמוך מהשווי - המניה זולה."
 }
 
-ABOUT_DB = {
-    "MSFT": "<b>מיקרוסופט:</b> שולטת בשוק התוכנה והענן. מנוע צמיחה אדיר ב-AI דרך OpenAI.",
-    "NVDA": "<b>אנבידיה:</b> מובילת שבבי ה-AI. החומרה שלה היא הבסיס לכל מודל בינה מלאכותית בעולם.",
-    "ENLT.TA": "<b>אנלייט:</b> חברה ישראלית המקימה חוות רוח ושמש. קריטית לאספקת חשמל נקי לחוות שרתים.",
-    "AAPL": "<b>אפל:</b> ענקית המכשירים עם אקו-סיסטם סגור שמייצר נאמנות ורווחים חוזרים גבוהים.",
-    "PLTR": "<b>פלנטיר:</b> מערכות AI מתקדמות לניתוח דאטה עבור ממשלות ועסקים גדולים."
-}
+# --- 3. לוגיקה פיננסית ---
 
-# --- 3. לוגיקה חכמה וחישובי PDF ---
+def get_currency(ticker):
+    return "אג'" if ".TA" in ticker else "$"
 
-def evaluate_stock(info):
+def evaluate_pdf_criteria(info):
+    """ חישוב 6 הקריטריונים מה-PDF """
     score = 0
     try:
         if info.get('revenueGrowth', 0) >= 0.10: score += 1
         if info.get('earningsGrowth', 0) >= 0.10: score += 1
         if info.get('profitMargins', 0) >= 0.10: score += 1
         if info.get('returnOnEquity', 0) >= 0.15: score += 1
-        if (info.get('totalCash', 0) / info.get('totalDebt', 1)) > 1: score += 1
+        if (info.get('totalCash', 0) > info.get('totalDebt', 0)): score += 1
         if info.get('totalDebt', 0) == 0: score += 1
     except: pass
     return score
 
-def calculate_fv(info):
-    try:
-        fcf = info.get('freeCashflow', 0) or 0
-        shares = info.get('sharesOutstanding', 1)
-        return (fcf * 15) / shares if fcf > 0 else 0
-    except: return 0
-
 # --- 4. שליפת נתונים ---
 MY_STOCKS_LIST = ["MSFT", "AAPL", "NVDA", "TSLA", "PLTR", "ENLT.TA", "POLI.TA", "LUMI.TA"]
-SCAN_LIST = ["AMZN", "AVGO", "META", "GOOGL", "LLY", "TSM", "COST", "V", "ADBE", "AMD"]
+SCAN_LIST = ["AMZN", "AVGO", "META", "GOOGL", "LLY", "TSM", "COST", "V", "ADBE", "NFLX", "AMD", "SBUX", "INTC"]
 
 @st.cache_data(ttl=600)
-def fetch_data(tickers):
+def fetch_everything(tickers):
     rows = []
     for t in tickers:
         try:
@@ -88,108 +75,132 @@ def fetch_data(tickers):
             if h.empty: continue
             px = h['Close'].iloc[-1]
             chg = ((px / h['Close'].iloc[-2]) - 1) * 100
-            score = evaluate_stock(inf)
-            fv = calculate_fv(inf)
             
+            score = evaluate_pdf_criteria(inf)
+            div_yield = inf.get('dividendYield', 0)
+            ex_div = inf.get('exDividendDate')
+            
+            # חישוב שווי הוגן (DCF מופשט)
+            fcf = inf.get('freeCashflow', 0) or 0
+            shares = inf.get('sharesOutstanding', 1)
+            fv = (fcf * 15) / shares if fcf > 0 else 0
+
             rows.append({
-                "Symbol": t, "CurrentPrice": px, "Change": round(chg, 2),
-                "QualityScore": score, "RevenueGrowth": inf.get('revenueGrowth', 0),
-                "ROE": inf.get('returnOnEquity', 0), "FairValue": fv,
-                "EarningsDate": inf.get('nextEarningsDate'), "Info": inf
+                "Symbol": t, "Price": px, "Change": chg, "Score": score,
+                "DivYield": div_yield, "ExDate": ex_div, "FairValue": fv,
+                "RevenueGrowth": inf.get('revenueGrowth', 0), "Info": inf
             })
         except: continue
     return pd.DataFrame(rows)
 
-df_all = fetch_data(list(set(MY_STOCKS_LIST + SCAN_LIST)))
+df_all = fetch_everything(list(set(MY_STOCKS_LIST + SCAN_LIST)))
 
-# --- 5. בניית הממשק ---
-st.title("🚀 Market Intelligence Hub 2026")
+# --- 5. ממשק המשתמש ---
+st.title("🚀 Investment Intelligence Hub 2026")
 
 # קוביות מדדים עליונות
-vix_px = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("📊 מדד הפחד (VIX)", f"{vix_px:.2f}")
-c2.metric("🏆 מניות זהב", len(df_all[df_all["QualityScore"] >= 5]))
+vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+c1.metric("📊 מדד הפחד (VIX)", f"{vix:.2f}")
+c2.metric("🏆 מניות זהב (5-6)", len(df_all[df_all["Score"] >= 5]))
 c3.metric("🔥 הזינוק היומי", df_all.loc[df_all["Change"].idxmax()]["Symbol"] if not df_all.empty else "N/A")
-c4.metric("🕒 עדכון אחרון", datetime.now().strftime("%H:%M"))
+c4.metric("🕒 עדכון אוטומטי", datetime.now().strftime("%H:%M"))
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📌 המניות שלי", "🔍 סורק מניות זהב", "📄 דוח ואודות (10 שנים)", "🔔 התראות חכמות", "🤝 רדאר מיזוגים"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📌 המניות שלי (P/L)", "🔍 סורק מניות זהב", "💰 לוח דיבידנדים", "📄 אודות וניתוח (10 שנים)", "🤝 רדאר מיזוגים"])
 
-# טאב 1: המניות שלי עם רווח והפסד (P/L)
+# טאב 1: המניות שלי - פשוט ומובן
 with tab1:
-    st.subheader("ניהול תיק וחישוב רווחיות")
+    st.subheader("מעקב החזקות: כמה הרווחתי?")
     if 'portfolio' not in st.session_state:
         # הוספה אוטומטית של מניות זהב מהסורק
-        gold_stocks = df_all[df_all['QualityScore'] >= 5]['Symbol'].tolist()
+        gold_stocks = df_all[df_all['Score'] >= 5]['Symbol'].tolist()
         initial_list = list(set(MY_STOCKS_LIST + gold_stocks))
-        st.session_state.portfolio = pd.DataFrame([{"Symbol": t, "BuyPrice": 0.0, "Quantity": 0} for t in initial_list])
+        st.session_state.portfolio = pd.DataFrame([{"Symbol": t, "BuyPrice": 0.0, "Qty": 0} for t in initial_list])
 
     edited_df = st.data_editor(st.session_state.portfolio, num_rows="dynamic")
     st.session_state.portfolio = edited_df
 
     if not edited_df.empty:
-        merged = pd.merge(edited_df, df_all[['Symbol', 'CurrentPrice', 'Change', 'QualityScore']], on="Symbol")
-        merged['P/L'] = (merged['CurrentPrice'] - merged['BuyPrice']) * merged['Quantity']
-        merged['Yield%'] = ((merged['CurrentPrice'] / merged['BuyPrice']) - 1) * 100
+        merged = pd.merge(edited_df, df_all[['Symbol', 'Price', 'Change', 'Score']], on="Symbol")
+        merged['P/L'] = (merged['Price'] - merged['BuyPrice']) * merged['Qty']
+        merged['Yield%'] = ((merged['Price'] / merged['BuyPrice']) - 1) * 100
         
+        # הצגת הטבלה עם בועות הסבר
         st.dataframe(
-            merged[["Symbol", "CurrentPrice", "Change", "P/L", "Yield%", "QualityScore"]],
+            merged[["Symbol", "Price", "Change", "P/L", "Yield%", "Score"]],
             column_config={
-                "CurrentPrice": st.column_config.NumberColumn("מחיר", help=GLOSSARY["מחיר"]),
-                "P/L": st.column_config.NumberColumn("רווח/הפסד ($/אג')", format="%.2f"),
-                "Yield%": st.column_config.NumberColumn("תשואה", format="%.1f%%"),
-                "QualityScore": st.column_config.NumberColumn("⭐ ציון", help="ציון איכות לפי 6 קריטריונים")
+                "Price": st.column_config.NumberColumn("מחיר", help=GLOSSARY["מחיר"]),
+                "P/L": st.column_config.NumberColumn("רווח/הפסד כספי", help=GLOSSARY["רווח/הפסד"], format="%.2f"),
+                "Yield%": st.column_config.NumberColumn("תשואה %", help=GLOSSARY["תשואה"], format="%.1f%%"),
+                "Score": st.column_config.NumberColumn("⭐ ציון איכות", help=GLOSSARY["ציון איכות"])
             },
             use_container_width=True, hide_index=True
         )
 
-# טאב 3: דוח, אודות ושור/דוב (10 שנים)
+# טאב 2: סורק מניות זהב - תוקן ופעיל
+with tab2:
+    st.subheader("🔍 סורק AI: מניות שעומדות בקריטריונים (ציון 4 ומעלה)")
+    # כאן אנחנו מציגים את כל המניות מהסורק שלא נמצאות בתיק שלך עדיין
+    scanner_results = df_all[df_all['Score'] >= 4].sort_values(by="Score", ascending=False)
+    st.dataframe(
+        scanner_results[["Symbol", "Price", "Score", "RevenueGrowth", "FairValue"]],
+        column_config={
+            "Score": st.column_config.NumberColumn("ציון איכות", help=GLOSSARY["ציון איכות"]),
+            "RevenueGrowth": st.column_config.NumberColumn("צמיחה", format="%.1%"),
+            "FairValue": st.column_config.NumberColumn("שווי הוגן", help=GLOSSARY["שווי הוגן"])
+        },
+        use_container_width=True, hide_index=True
+    )
+
+# טאב 3: לוח דיבידנדים - חדש!
 with tab3:
+    st.subheader("💰 מי מחלק מזומן? (דיבידנדים)")
+    
+    div_df = df_all[df_all['DivYield'] > 0].sort_values(by="DivYield", ascending=False)
+    
+    # המרת תאריך אקס לפורמט קריא
+    div_df['ExDateClean'] = div_df['ExDate'].apply(lambda x: datetime.fromtimestamp(x).strftime('%d/%m/%Y') if x else "לא ידוע")
+    
+    st.dataframe(
+        div_df[["Symbol", "Price", "DivYield", "ExDateClean"]],
+        column_config={
+            "DivYield": st.column_config.NumberColumn("דיבידנד %", help=GLOSSARY["דיבידנד %"], format="%.2%"),
+            "ExDateClean": st.column_config.TextColumn("תאריך אקס (אחרון לקנייה)", help=GLOSSARY["תאריך אקס"])
+        },
+        use_container_width=True, hide_index=True
+    )
+
+# טאב 4: אודות וניתוח (10 שנים)
+with tab4:
     sel = st.selectbox("בחר מניה לניתוח עמוק:", df_all['Symbol'].unique())
     row = df_all[df_all['Symbol'] == sel].iloc[0]
     
-    # אודות מורחב
-    st.markdown(f'<div class="ai-card"><b>🏢 אודות {sel}:</b><br>{ABOUT_DB.get(sel, "חברה מובילה המופיעה ברשימות המעקב.")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="intel-card"><b>🏢 אודות {sel}:</b><br>{row["Info"].get("longBusinessSummary", "מידע לא זמין")[:600]}...</div>', unsafe_allow_html=True)
     
-    # ניתוח שור ודוב (AI)
-    col_bull, col_bear = st.columns(2)
-    with col_bull:
-        st.markdown(f'<div class="bull"><b>🐂 תרחיש השור (AI):</b> צמיחה של {row["RevenueGrowth"]:.1%} ומובילות טכנולוגית חזקה.</div>', unsafe_allow_html=True)
-    with col_bear:
-        st.markdown(f'<div class="bear"><b>🐻 תרחיש הדוב (AI):</b> מכפיל רווח גבוה וסיכוני רגולציה שעלולים להוביל לתיקון.</div>', unsafe_allow_html=True)
+    c_bull, c_bear = st.columns(2)
+    with c_bull:
+        st.markdown(f'<div class="bull-box"><b>🐂 תרחיש השור (AI):</b> המניה מציגה צמיחה חזקה ופוטנציאל להובלת השוק.</div>', unsafe_allow_html=True)
+    with c_bear:
+        st.markdown(f'<div class="bear-box"><b>🐻 תרחיש הדוב (AI):</b> קיימים סיכוני תמחור יתר או תחרות גוברת בסקטור.</div>', unsafe_allow_html=True)
 
-    # גרף 10 שנים
-    yrs = st.slider("טווח שנים לגרף:", 1, 10, 5)
+    yrs = st.slider("בחר טווח שנים לגרף (עד 10 שנים):", 1, 10, 5)
     hist = yf.Ticker(sel).history(period=f"{yrs}y")
     fig = go.Figure(go.Scatter(x=hist.index, y=hist['Close'], line=dict(color='#1a73e8', width=2), fill='tozeroy'))
-    fig.update_layout(title=f"ביצועי מניית {sel} ל-{yrs} שנים", height=350, template="plotly_white", margin=dict(l=0,r=0,t=30,b=0))
+    fig.update_layout(title=f"ביצועי מניית {sel} ל-{yrs} שנים", height=350, template="plotly_white")
     st.plotly_chart(fig, use_container_width=True)
 
-# טאב 4: התראות דוחות (7 ימים מראש)
-with tab4:
-    st.subheader("🔔 מודיעין דוחות ואירועים (AI)")
-    found_alert = False
-    for _, r in df_all.iterrows():
-        if r['EarningsDate']:
-            e_dt = datetime.fromtimestamp(r['EarningsDate'])
-            days = (e_dt - datetime.now()).days
-            if 0 <= days <= 7:
-                st.warning(f"📅 **{r['Symbol']}** מפרסמת דוחות בעוד {days} ימים! (ניתוח AI צופה תנודתיות גבוהה)")
-                found_alert = True
-        if abs(r['Change']) >= 3.0:
-            st.info(f"🚀 **{r['Symbol']}** בתנועה חריגה של {r['Change']}% היום.")
-            found_alert = True
-    if not found_alert: st.write("אין דוחות משמעותיים בשבוע הקרוב.")
-
-# טאב 5: רדאר מיזוגים עם לינקים
+# טאב 5: רדאר מיזוגים
 with tab5:
-    st.subheader("🤝 רדאר M&A ושמועות גלובליות")
+    st.subheader("🤝 רדאר M&A ושמועות שוק")
+    
     mergers = [
-        {"חברה": "Wiz / Google", "פרטים": "שמועות על רכישה בסך 23 מיליארד דולר.", "לינק": "https://www.google.com/search?q=Wiz+Google+merger"},
-        {"חברה": "Intel / Qualcomm", "פרטים": "ספקולציות על רכישת חטיבת השבבים.", "לינק": "https://www.google.com/search?q=Intel+Qualcomm+acquisition"}
+        {"חברה": "Wiz / Google", "נושא": "מיזוג ענק", "סבירות": "75%", "לינק": "https://www.google.com/search?q=Wiz+Google+merger"},
+        {"חברה": "Intel / Broadcom", "נושא": "שמועות רכישה", "סבירות": "40%", "לינק": "https://www.google.com/search?q=Intel+acquisition+rumors"}
     ]
     for m in mergers:
-        st.markdown(f"""<div class="ai-card">
-            <b>🤝 {m['חברה']}</b> | {m['פרטים']}<br>
-            <a href="{m['לינק']}" target="_blank" style="color:#1a73e8; font-weight:bold;">🔗 קרא את הדיווח המלא</a>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="intel-card">
+            <b>{m['חברה']}</b> | {m['נושא']} | סבירות AI: {m['סבירות']}<br>
+            <a href="{m['לינק']}" target="_blank" style="color:#1a73e8;">🔗 קרא עוד בחדשות העולם</a>
+        </div>
+        """, unsafe_allow_html=True)
